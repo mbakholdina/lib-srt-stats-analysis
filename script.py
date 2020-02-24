@@ -3,8 +3,9 @@ import pathlib
 
 # import matplotlib.pyplot as plt
 import pandas as pd
-# import plotly.graph_objects as go
+import plotly.graph_objects as go
 # import seaborn as sns
+import streamlit as st
 
 from tcpdump_processing import convert, extract_packets
 
@@ -177,13 +178,75 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     return result
 
 
+def plot_scatter(
+    title,
+    x_metric,
+    y_metrics,
+    x_axis_title,
+    y_axis_title,
+    df_aggregated
+):
+    """
+    Function to plot and format a scatterplot from the aggregated dataframe
+    """
+    data = []
+    shapes = list()
+    for y_metric in y_metrics:
+        data.append(
+            go.Scatter(
+                x=df_aggregated.index,
+                y=df_aggregated[y_metric],
+                mode='lines',
+                marker=dict(opacity=0.8, line=dict(width=0)),
+                name=y_metric
+            )
+        )
+
+    fig = go.Figure(data=data)
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_axis_title,
+        yaxis_title=y_axis_title,
+        legend=go.layout.Legend(
+            x=0,
+            y=1,
+            traceorder="normal",
+            font=dict(family="sans-serif", size=8, color="black"),
+            bgcolor="LightSteelBlue",
+            bordercolor="Black",
+            borderwidth=2
+        ),
+        shapes=shapes
+    )
+    st.plotly_chart(fig)
+
+
 def main():
     # Set filepaths to the source files: sender and receiver SRT core .csv statistics, tshark .pcapng dumps collected on both sides
-    SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
-    RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
+    # SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    # RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
+
+    SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
 
     result = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
+    print(result.head(20))
+
+    st.title('Title')
+
+    st.subheader('Joined stats')
+    st.write(result)
+    st.write(result.describe())
+    plot_scatter(
+        'Synchronized stats',
+        'Time',
+        result.columns,
+        'Time',
+        'SYNCHRONIZED',
+        result
+    )
 
 
 if __name__ == '__main__':
