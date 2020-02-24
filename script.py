@@ -2,6 +2,7 @@
 import pathlib
 
 # import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 # import seaborn as sns
@@ -53,12 +54,12 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     snd_stats.index = snd_stats.index.tz_convert(None)
     rcv_stats.index = rcv_stats.index.tz_convert(None)
 
-    # print('Sender statisitcs')
-    # print(snd_stats.head(10))
-    # print(snd_stats.tail(10))
-    # print('Receiver statistics')
-    # print(rcv_stats.head(10))
-    # print(rcv_stats.tail(10))
+    print('\nSender stats')
+    print(snd_stats.head(10))
+    print(snd_stats.tail(10))
+    print('\nReceiver stats')
+    print(rcv_stats.head(10))
+    print(rcv_stats.tail(10))
 
     # TODO: Adjust clocks
 
@@ -86,24 +87,89 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     if not stats['isSender'][-1]:
         stats = stats[:-1]
     
-    # print(stats.head())
-    # print(stats.tail())
+    print('\nJoined stats')
+    print(stats.head(10))
+    print(stats.tail(10))
 
     # Do linear interpolation for features where applicable
-    stats['msRTT_rcv'] = stats['msRTT_rcv'].interpolate()
-    stats['msRTT_rcv'] = stats['msRTT_rcv'].fillna(stats['msRTT_rcv'][1])
+    # stats['msRTT_rcv'] = stats['msRTT_rcv'].interpolate()
+    # stats['msRTT_rcv'] = stats['msRTT_rcv'].fillna(method='bfill')
 
-    stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].interpolate()
-    stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].fillna(stats['mbpsBandwidth_rcv'][1])
+    # stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].interpolate()
+    # stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].fillna(method='bfill')
+
+    # print('\nInterpolated stats')
+    # print(stats.head(10))
+    # print(stats.tail(10))
+    # print(stats.info())
+    # print(stats.describe())
+
+    # The algorithm we are going to apply for aggregated statistics
+    # has one assumption: in joined dataframe there should be no consecutive
+    # datapoints from receiver or sender. All measurements should correspond
+    # to: one point from sender, one point from receiver, one point from sender,
+    # etc. See column stats['isSender'] which is True in case sender data
+    # point and False in case receiver data point.
+    stats['isSenderCheck'] = ~stats['isSender'].diff().fillna(True)
+
+
+    check = stats[stats['isSenderCheck']]
+    print(check)
+    print(check.info())
+
+    # ser = stats['2020-10-02 17:34:30':'2020-10-02 17:34:31']
+    # print(ser[40:70])
+    problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
+    print('\n Problem 1')
+    print(problem_1)
+
+    problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
+    print('\n Problem 2')
+    print(problem_2)
+
+    # Fixing the problem
+
+    stats['pktRecv_rcv_shifted'] = stats['pktRecv_rcv'].shift()
+    # stats[stats['isSenderCheck']].apply(lambda x: x.pktRecv_rcv + x.pktRecv_rcv_shifted, axis=1)
+    # stats = stats.apply(lambda x: (x.pktRecv_rcv + x.pktRecv_rcv_shifted) if x.isSenderCheck == True, axis=1)
+
+    #  read this 
+    # https://stackoverflow.com/questions/33769860/pandas-apply-but-only-for-rows-where-a-condition-is-met
+    # - https://datatofish.com/if-condition-in-pandas-dataframe/
+
+    # alternative - any + shift
+    # https://stackoverflow.com/questions/40979760/compare-2-consecutive-rows-and-assign-increasing-value-if-different-using-panda
+
+    print('After fixing the problem')
+    print(stats)
+
+    problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
+    print('\n Problem 1')
+    print(problem_1)
+
+    problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
+    print('\n Problem 2')
+    print(problem_2)
+    
+    
+
+    # '2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844'
+
+    
+    # TODO: Add check that there is no situations left - that column check = False
+    # TODO: Check that the number of sender point is higher by 1 than the number of rcv points
+    # TODO: Do interpolation after this check
+
+    return
 
     # The rest statistics is the aggredated statistics, so we will apply
     # special technique to align the frames
     stats['timeDiff'] = stats.index.to_series().diff().fillna(pd.to_timedelta(0))
     stats['timeDiffShifted'] = stats['timeDiff'].shift().fillna(pd.to_timedelta(0))
     
-    # print('Combined stats')
-    # print(stats.head(20))
-    # print(stats.tail(20))
+    print('TimeDiff')
+    print(stats.head())
+    print(stats.tail())
 
     # Create an auxiliary dataframe df to work with receiver statistics, 
     # which can not be interpolated
@@ -113,10 +179,11 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     ]
     cols_df = ['timeDiffShifted', 'timeDiff'] + cols
 
-    # TODO: Optimize this
     df = stats[stats['isSender'] == False]
     df = df[cols_df]
     df = df.rename(columns={'timeDiffShifted': 'timeDiff_p1', 'timeDiff': 'timeDiff_p2'})
+
+    print(df.head())
 
     df['timeDiff'] = df.index.to_series().diff()
     df['timeDiff'] = df['timeDiff'].fillna(df['timeDiff'].mean())
@@ -124,34 +191,53 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     df['timeDiff_p1'] = df['timeDiff_p1'] / df['timeDiff']
     df['timeDiff_p2'] = df['timeDiff_p2'] / df['timeDiff']
 
+    print(df.head())
+
     for col in cols:
         df[f'{col}_p1'] = (df['timeDiff_p1'] * df[col]).round().astype('int32')
         df[f'{col}_p2'] = (df['timeDiff_p2'] * df[col]).round().astype('int32')
         df[f'{col}_adj'] = df[f'{col}_p1'] + df[f'{col}_p2'].shift().fillna(0)
 
+    print(df.head(20))
+
     cols_adj = [f'{col}_adj' for col in cols]
     df = df[cols_adj]
 
-    # print('Receiver df for calculations')
-    # print(df.head(20))
-    # print(df.tail(20))
+    print('Receiver df for calculations')
+    print(df.head(20))
+    print(df.tail(20))
     
-    # In order to obtain the result dataframe, first join the auxiliary
-    # dataframe df with adjusted receiver statistics to snd_stats and 
-    # shift the data to correspond sender timepoints
-    result = snd_stats.join(df, how='outer')
-    result['isSender'] = result['isSender'].fillna(False)
+    # TODO: Check for NaNs
+    
+    # In order to obtain the result dataframe, first extract sender statistics
+    # and interpolated rcv statistics from stats dataframe, second join the auxiliary
+    # dataframe df with adjusted aggregated receiver statistics, then
+    # shift df columns data one point up to correspond sender timepoints,
+    # and finally extract sender observations only
+    cols_stats = [
+        'isSender',
+        'pktSent_snd',
+        'pktSndLoss_snd',
+        'msRTT_snd',
+        'mbpsBandwidth_snd',
+        'msRTT_rcv',
+        'mbpsBandwidth_rcv'
+    ]
+    result = stats[cols_stats]
+    result = result.join(df, how='outer')
+
+    print('Intermediate result - before shift')
+    print(result.head(10))
+    print(result.tail(10))
+
     for col in cols_adj:
         result[col] = result[col].shift(-1)
+        # TODO: The last observation here is Nan -> fill
 
-    # Then, join the interpolated receiver statistics from stats dataframe
-    cols_stats = ['msRTT_rcv' ,'mbpsBandwidth_rcv']
-    result = result.join(stats[cols_stats], how='outer')
+    print('Intermediate result - after shift')
+    print(result.head(10))
+    print(result.tail(10))
 
-    # print('Intermediate result')
-    # print(result.head(20))
-
-    # Finally, extract sender observations only
     result = result[result['isSender']]
 
     cols_renamed = {
@@ -172,8 +258,9 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     ]
     result = result[cols_rearranged]
 
-    # print('Final result')
-    # print(result.head(20))
+    print('Final result')
+    print(result.head(10))
+    print(result.tail(10))
 
     return result
 
@@ -232,6 +319,7 @@ def main():
     RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
 
     result = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
+    return
     print(result.head(20))
 
     st.title('Title')
