@@ -11,6 +11,95 @@ import streamlit as st
 from tcpdump_processing import convert, extract_packets
 
 
+def print_problem_places(stats):
+    # TODO: Delete this later
+    # Problem places for debugging purposes
+    problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
+    print('\n Problem 1')
+    print(problem_1)
+
+    problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
+    print('\n Problem 2')
+    print(problem_2)
+
+
+def fix_stats_dataframe(stats):
+    # If stats['isSenderCheck'] == True, it means we've found the place where
+    # there are two or more consecutive points for receiver/sender.
+    # The first value is always False.
+
+    print_problem_places(stats)
+
+    # TODO: Delete this later
+    stats.loc['2020-10-02 17:34:30.285718'] = [
+        np.nan,
+        np.nan,
+        np.nan,
+        np.nan,
+        False,
+        69.578,
+        85.284,
+        97.0,
+        0.0
+    ]
+
+    print('\nIntroducing several consecutive problem places')
+    print_problem_places(stats)
+
+    #### Function
+
+    cols_aggreg_snd = [
+        'pktSent_snd',
+        'pktSndLoss_snd',
+    ]
+    cols_aggreg_rcv = [
+        'pktRecv_rcv',
+        'pktRcvLoss_rcv',
+    ]
+    cols_to_fix = cols_aggreg_rcv + cols_aggreg_snd
+
+    i = 0
+
+    while(True):
+        print(f'\nIteration: {i}')
+
+        stats['toFix'] = ~stats['isSender'].diff().fillna(True)
+
+        print(f"\nPoints to fix: {stats['toFix'].sum()}")
+
+        print_problem_places(stats)
+
+        if stats['toFix'].sum() == 0:
+            print('Exiting from while cycle')
+            # break - additional checks
+            return
+
+        # TODO: Check boundaries for shift, plus do not forget about assumption
+        # that stats dataframe should have first and last row from sender - make an assertion
+        # Fix rows
+        for col in cols_to_fix:
+            stats.loc[(stats['toFix'] == True) & (stats['toFix'].shift() == False), col] = stats[col] + stats[col].shift()
+            
+        print('\nFixed rows')
+        print(stats.info())
+        print_problem_places(stats)
+
+        # Drop rows on top of fixed rows
+        indexs_to_drop = stats[(stats['toFix'] == False) & (stats['toFix'].shift(-1) == True)].index
+        stats.drop(indexs_to_drop, inplace=True)
+
+        # TODO: Check that we can not drop first and last rows
+        print('\nDropped rows')
+        print(stats.info())
+        print_problem_places(stats)
+
+        i += 1
+    
+    # TODO: Additional  + throw exception
+    # TODO: Add check that there is no situations left - that column check = False
+    # TODO: Check that the number of sender point is higher by 1 than the number of rcv points
+
+
 def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     # Set the list of SRT statistics features to analyze
     SND_FEATURES = [
@@ -91,120 +180,29 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     print(stats.head(10))
     print(stats.tail(10))
 
-    # Do linear interpolation for features where applicable
-    # stats['msRTT_rcv'] = stats['msRTT_rcv'].interpolate()
-    # stats['msRTT_rcv'] = stats['msRTT_rcv'].fillna(method='bfill')
-
-    # stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].interpolate()
-    # stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].fillna(method='bfill')
-
-    # print('\nInterpolated stats')
-    # print(stats.head(10))
-    # print(stats.tail(10))
-    # print(stats.info())
-    # print(stats.describe())
-
     # The algorithm we are going to apply for aggregated statistics
     # has one assumption: in joined dataframe there should be no consecutive
     # datapoints from receiver or sender. All measurements should correspond
     # to: one point from sender, one point from receiver, one point from sender,
     # etc. See column stats['isSender'] which is True in case sender data
     # point and False in case receiver data point.
-    # If stats['isSenderCheck'] == True, it means we've found the place where
-    # there are two or more consecutive points for receiver/sender.
-    # The first value is always False.
+    fix_stats_dataframe(stats)
 
-    # TODO: Delete
-    # stats.loc['2020-10-02 17:34:30.285718'] = [
-    #     np.nan,
-    #     np.nan,
-    #     np.nan,
-    #     np.nan,
-    #     False,
-    #     69.578,
-    #     85.284,
-    #     97.0,
-    #     0.0
-    # ]
+    # Do linear interpolation for features where applicable
+    stats['msRTT_rcv'] = stats['msRTT_rcv'].interpolate()
+    stats['msRTT_rcv'] = stats['msRTT_rcv'].fillna(method='bfill')
 
-    stats['toFix'] = ~stats['isSender'].diff().fillna(True)
+    stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].interpolate()
+    stats['mbpsBandwidth_rcv'] = stats['mbpsBandwidth_rcv'].fillna(method='bfill')
 
-    # TODO: Delete this later
-    # Problem places for debugging
-    problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
-    print('\n Problem 1')
-    print(problem_1)
-
-    problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
-    print('\n Problem 2')
-    print(problem_2)
-
-    # Fixing the problem
-    cols_aggreg_snd = [
-        'pktSent_snd',
-        'pktSndLoss_snd',
-    ]
-    cols_aggreg_rcv = [
-        'pktRecv_rcv',
-        'pktRcvLoss_rcv',
-    ]
-    cols_to_fix = cols_aggreg_rcv + cols_aggreg_snd
-
-    # TODO: Delete this
-    # for col in cols_to_fix:
-    #     problem_1.loc[problem_1['isSenderCheck'] == True, col] = problem_1[col] + problem_1[col].shift()
-    # print(problem_1)
-
-    for col in cols_to_fix:
-        stats.loc[(stats['toFix'] == True) & (stats['toFix'].shift() == False), col] = stats[col] + stats[col].shift()
-        
-    print('Fixed rows')
-    print(stats.loc[stats['toFix'] == True])
+    print('\nInterpolated stats')
+    print(stats.head(10))
+    print(stats.tail(10))
     print(stats.info())
+    print(stats.describe())
 
-    # Drop rows
-    indexNames = stats[(stats['toFix'] ==False) & (stats['toFix'].shift(-1) == True)].index
-    stats.drop(indexNames, inplace=True)
-
-    print('Dropped rows')
-    print(stats.info())
-    # stats['toDrop'] = stats['toFix']
-
-    return
-
-    """ stats['pktRecv_rcv_shifted'] = stats['pktRecv_rcv'].shift()
-    # stats[stats['isSenderCheck']].apply(lambda x: x.pktRecv_rcv + x.pktRecv_rcv_shifted, axis=1)
-    # stats = stats.apply(lambda x: (x.pktRecv_rcv + x.pktRecv_rcv_shifted) if x.isSenderCheck == True, axis=1)
-
-    #  read this 
-    # https://stackoverflow.com/questions/33769860/pandas-apply-but-only-for-rows-where-a-condition-is-met
-    # - https://datatofish.com/if-condition-in-pandas-dataframe/
-
-    # alternative - any + shift
-    # https://stackoverflow.com/questions/40979760/compare-2-consecutive-rows-and-assign-increasing-value-if-different-using-panda
-
-    print('After fixing the problem')
-    print(stats)
-
-    problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
-    print('\n Problem 1')
-    print(problem_1)
-
-    problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
-    print('\n Problem 2')
-    print(problem_2) """
+    # return
     
-    
-
-    # '2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844'
-
-    
-    # TODO: Add check that there is no situations left - that column check = False
-    # TODO: Check that the number of sender point is higher by 1 than the number of rcv points
-    # TODO: Do interpolation after this check
-
-    return
-
     # The rest statistics is the aggredated statistics, so we will apply
     # special technique to align the frames
     stats['timeDiff'] = stats.index.to_series().diff().fillna(pd.to_timedelta(0))
@@ -304,6 +302,7 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     print('Final result')
     print(result.head(10))
     print(result.tail(10))
+    print(result.info())
 
     return result
 
@@ -362,14 +361,15 @@ def main():
     RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
 
     result = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
-    return
-    print(result.head(20))
+
+    # print(result.head(20))
 
     st.title('Title')
 
     st.subheader('Joined stats')
     st.write(result)
     st.write(result.describe())
+    st.write(result.info())
     plot_scatter(
         'Synchronized stats',
         'Time',
