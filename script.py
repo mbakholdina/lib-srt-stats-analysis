@@ -110,15 +110,27 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     # to: one point from sender, one point from receiver, one point from sender,
     # etc. See column stats['isSender'] which is True in case sender data
     # point and False in case receiver data point.
-    stats['isSenderCheck'] = ~stats['isSender'].diff().fillna(True)
+    # If stats['isSenderCheck'] == True, it means we've found the place where
+    # there are two or more consecutive points for receiver/sender.
+    # The first value is always False.
 
+    # TODO: Delete
+    # stats.loc['2020-10-02 17:34:30.285718'] = [
+    #     np.nan,
+    #     np.nan,
+    #     np.nan,
+    #     np.nan,
+    #     False,
+    #     69.578,
+    #     85.284,
+    #     97.0,
+    #     0.0
+    # ]
 
-    check = stats[stats['isSenderCheck']]
-    print(check)
-    print(check.info())
+    stats['toFix'] = ~stats['isSender'].diff().fillna(True)
 
-    # ser = stats['2020-10-02 17:34:30':'2020-10-02 17:34:31']
-    # print(ser[40:70])
+    # TODO: Delete this later
+    # Problem places for debugging
     problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
     print('\n Problem 1')
     print(problem_1)
@@ -128,8 +140,39 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     print(problem_2)
 
     # Fixing the problem
+    cols_aggreg_snd = [
+        'pktSent_snd',
+        'pktSndLoss_snd',
+    ]
+    cols_aggreg_rcv = [
+        'pktRecv_rcv',
+        'pktRcvLoss_rcv',
+    ]
+    cols_to_fix = cols_aggreg_rcv + cols_aggreg_snd
 
-    stats['pktRecv_rcv_shifted'] = stats['pktRecv_rcv'].shift()
+    # TODO: Delete this
+    # for col in cols_to_fix:
+    #     problem_1.loc[problem_1['isSenderCheck'] == True, col] = problem_1[col] + problem_1[col].shift()
+    # print(problem_1)
+
+    for col in cols_to_fix:
+        stats.loc[(stats['toFix'] == True) & (stats['toFix'].shift() == False), col] = stats[col] + stats[col].shift()
+        
+    print('Fixed rows')
+    print(stats.loc[stats['toFix'] == True])
+    print(stats.info())
+
+    # Drop rows
+    indexNames = stats[(stats['toFix'] ==False) & (stats['toFix'].shift(-1) == True)].index
+    stats.drop(indexNames, inplace=True)
+
+    print('Dropped rows')
+    print(stats.info())
+    # stats['toDrop'] = stats['toFix']
+
+    return
+
+    """ stats['pktRecv_rcv_shifted'] = stats['pktRecv_rcv'].shift()
     # stats[stats['isSenderCheck']].apply(lambda x: x.pktRecv_rcv + x.pktRecv_rcv_shifted, axis=1)
     # stats = stats.apply(lambda x: (x.pktRecv_rcv + x.pktRecv_rcv_shifted) if x.isSenderCheck == True, axis=1)
 
@@ -149,7 +192,7 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
 
     problem_2 = stats['2020-10-02 17:34:30.510054': '2020-10-02 17:34:30.540437']
     print('\n Problem 2')
-    print(problem_2)
+    print(problem_2) """
     
     
 
