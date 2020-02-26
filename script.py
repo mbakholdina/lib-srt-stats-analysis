@@ -14,6 +14,7 @@ from tcpdump_processing import convert, extract_packets
 def print_problem_places(stats):
     # TODO: Delete this later
     # Problem places for debugging purposes
+    print('\nProblem places')
     problem_1 = stats['2020-10-02 17:34:30.275586':'2020-10-02 17:34:30.307844']
     print('\n Problem 1')
     print(problem_1)
@@ -31,6 +32,7 @@ def fix_stats_dataframe(stats):
     print_problem_places(stats)
 
     # TODO: Delete this later
+    print('\nIntroducing several consecutive problem places')
     stats.loc['2020-10-02 17:34:30.285718'] = [
         np.nan,
         np.nan,
@@ -43,7 +45,6 @@ def fix_stats_dataframe(stats):
         0.0
     ]
 
-    print('\nIntroducing several consecutive problem places')
     print_problem_places(stats)
 
     #### Function
@@ -95,12 +96,12 @@ def fix_stats_dataframe(stats):
 
         i += 1
     
-    # TODO: Additional  + throw exception
+    # TODO: Additional checks + throw exception
     # TODO: Add check that there is no situations left - that column check = False
     # TODO: Check that the number of sender point is higher by 1 than the number of rcv points
 
 
-def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
+def align_srt_stats_v1(snd_stats_path: str, rcv_stats_path: str):
     # Set the list of SRT statistics features to analyze
     SND_FEATURES = [
         # 'pktFlowWindow',
@@ -307,6 +308,125 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     return result
 
 
+def align_srt_stats_v2(snd_stats_path: str, rcv_stats_path: str):
+    # Set the list of SRT statistics features to analyze
+    SND_FEATURES = [
+        # 'pktFlowWindow',
+        # 'pktCongestionWindow',
+        # 'pktFlightSize',
+        'msRTT',
+        'mbpsBandwidth',
+        'pktSent',
+        'pktSndLoss',
+        # 'pktSndDrop',
+        # 'pktRetrans',
+        # 'byteSent',
+        # 'byteSndDrop',
+        # 'mbpsSendRate',
+        # 'usPktSndPeriod',
+    ]
+
+    RCV_FEATURES = [
+        'msRTT',
+        'mbpsBandwidth',
+        'pktRecv',
+        'pktRcvLoss',
+        # 'pktRcvDrop',
+        # 'pktRcvRetrans',
+        # 'pktRcvBelated',
+        # 'byteRecv',
+        # 'byteRcvLoss',
+        # 'byteRcvDrop',
+        # 'mbpsRecvRate',
+    ]
+
+    # Load SRT statistics from sender and receiver side to dataframes 
+    # snd_stats and rcv_stats respectively and extract features of interest
+    snd_stats = pd.read_csv(snd_stats_path, index_col='Timepoint', parse_dates=True)
+    rcv_stats = pd.read_csv(rcv_stats_path, index_col='Timepoint', parse_dates=True)
+    snd_stats = snd_stats[SND_FEATURES]
+    rcv_stats = rcv_stats[RCV_FEATURES]
+
+    # Convert timezones to UTC+0
+    snd_stats.index = snd_stats.index.tz_convert(None)
+    rcv_stats.index = rcv_stats.index.tz_convert(None)
+
+    print('\nSender stats')
+    print(snd_stats.head(10))
+    print(snd_stats.tail(10))
+    print('\nReceiver stats')
+    print(rcv_stats.head(10))
+    print(rcv_stats.tail(10))
+
+    # TODO: Adjust clocks
+
+    # Combine sender and receiver datasets into stats dataframe
+    snd_stats = snd_stats.add_suffix('_snd')
+    rcv_stats = rcv_stats.add_suffix('_rcv')
+    snd_stats['isSender'] = True
+    stats = snd_stats.join(rcv_stats, how='outer')
+    stats['isSender'] = stats['isSender'].fillna(False)
+
+    # Further we will use sender time to align the stats from 
+    # receiver and sender
+    # To do so, first we cut the time points on top and at the bottom 
+    # of stats dataframe where statistics was collected only 
+    # on receiver or sender side
+    # TODO: I've tested caller-snd and listener-rcv setup.
+    # Check additionally how this behaves in case of caller-rcv and 
+    # listener-snd setup
+    start_timestamp = max(snd_stats.index[0], rcv_stats.index[0])
+    end_timestamp = min(snd_stats.index[-1], rcv_stats.index[-1])
+    stats = stats[(stats.index >= start_timestamp) & (stats.index <= end_timestamp)]
+
+    # Second, we check that the first and the last timepoints are both
+    # sender timepoints. If not, drop them.
+    if not stats['isSender'][0]:
+        stats = stats[1:]
+
+    if not stats['isSender'][-1]:
+        stats = stats[:-1]
+    
+    print('\nJoined stats')
+    print(stats.head(10))
+    print(stats.tail(10))
+
+    # Do linear interpolation for features where applicable
+    cols_to_round = [
+        'pktSent_snd',
+        'pktSndLoss_snd',
+        'pktRecv_rcv',
+        'pktRcvLoss_rcv',
+    ]
+    stats.loc[:, stats.columns != 'isSender'] = stats.interpolate().fillna(method='bfill')
+    stats.loc[:, cols_to_round] = stats.round()
+
+    print('\nInterpolated stats')
+    print(stats.head(10))
+    print(stats.tail(10))
+
+    stats = stats[stats['isSender']]
+
+    cols_rearranged = [
+        'pktSent_snd',
+        'pktRecv_rcv',
+        'pktSndLoss_snd',
+        'pktRcvLoss_rcv',
+        'msRTT_snd',
+        'msRTT_rcv',
+        'mbpsBandwidth_snd',
+        'mbpsBandwidth_rcv'
+    ]
+    stats = stats[cols_rearranged]
+
+    print('Final result')
+    print(stats.head(10))
+    print(stats.tail(10))
+    print(stats.info())
+
+    return stats
+
+
 def plot_scatter(
     title,
     x_metric,
@@ -360,9 +480,7 @@ def main():
     RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
     RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
 
-    result = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
-
-    # print(result.head(20))
+    result = align_srt_stats_v2(SND_STATS_PATH, RCV_STATS_PATH)
 
     st.title('Title')
 
