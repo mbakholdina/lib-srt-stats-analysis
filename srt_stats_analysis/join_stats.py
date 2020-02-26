@@ -1,15 +1,32 @@
 """
-Module designed to align SRT core statistics collected from receiver
-and sender and join tshark datasets if necessary.
+Module designed to align SRT core statistics obtained from receiver
+and sender as well as tshark datasets if necessary.
 """
+import pathlib
+
 import pandas as pd
 
 from tcpdump_processing import convert, extract_packets
 
 
+# Without Ethernet packet overhead, bytes
+SRT_DATA_PACKET_HEADER_SIZE = 44
+# TODO: Make proper separation: 1316 - live mode, 1456 - file mode
+SRT_DATA_PACKET_PAYLOAD_SIZE = 1316
+# SRT_DATA_PACKET_PAYLOAD_SIZE = 1456
+
+
+def convert_pktsps_in_bytesps(value):
+    return value * (SRT_DATA_PACKET_HEADER_SIZE + SRT_DATA_PACKET_PAYLOAD_SIZE)
+
+
+def convert_bytesps_in_mbps(value):
+    return value * 8 / 1000000
+
+
 def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     """
-    Function designed to aligh SRT core statistics datasets.
+    Align SRT core statistics obtained from receiver and sender.
 
     Attributes:
         snd_stats_path:
@@ -132,6 +149,36 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     return stats
 
 
+# TODO: Under development
+def align_srt_tshark_stats(stats: pd.DataFrame, tshark_stats_path: str):
+    """
+    Align SRT stats and tshark 
+    """
+    # Extract SRT packets from .pcapng tshark dump file
+    srt_packets = extract_packets.extract_srt_packets(tshark_stats_path)
+    srt_packets.head(10)
+
+    print(srt_packets.empty)
+
+    # Extract UMSG_ACK packets from SRT packets rcv_srt_packets which 
+    # contains receiving speed and bandwidth estimations reported by
+    # receiver each 10 ms:
+    umsg_ack_packets = extract_packets.extract_umsg_ack_packets(srt_packets)
+    umsg_ack_packets.head(10)
+
+    # From rcv_umsg_ack_packets dataframe, extract features valuable 
+    # for further analysis, do some data cleaning and timezone correction
+    TSHARK_FEATURES = ['ws.no', 'frame.time', 'srt.rate', 'srt.bw', 'srt.rcvrate']
+    umsg_ack_packets = umsg_ack_packets[TSHARK_FEATURES]
+    umsg_ack_packets = umsg_ack_packets.set_index('frame.time')
+    umsg_ack_packets.index = umsg_ack_packets.index.tz_convert(None)
+    umsg_ack_packets = umsg_ack_packets.rename(columns={"srt.rate": "srt.rate.pkts", "srt.bw": "srt.bw.pkts", "srt.rcvrate": "srt.rate.Bps"})
+    umsg_ack_packets['srt.rate.Mbps'] = convert_bytesps_in_mbps(umsg_ack_packets['srt.rate.Bps'])
+    umsg_ack_packets['srt.bw.Mbps'] = convert_bytesps_in_mbps(convert_pktsps_in_bytesps(umsg_ack_packets['srt.bw.pkts']))
+    umsg_ack_packets = umsg_ack_packets[['ws.no', 'srt.rate.pkts', 'srt.rate.Mbps', 'srt.bw.pkts', 'srt.bw.Mbps']]
+    umsg_ack_packets.head()
+
+
 def main():
     # Set filepaths to the source files: sender and receiver SRT core .csv statistics, tshark .pcapng dumps collected on both sides
     # SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_15Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
@@ -140,13 +187,23 @@ def main():
 
     SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
     RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile.pcapng'
+    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
+    # For the first time
+    # SND_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(SND_TSHARK_PCAPNG), True)
+    # For the following time
+    # SND_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(SND_TSHARK_PCAPNG))
+
+    # Align SRT statisitcs obtained from receiver and sender
     stats = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
 
     print('\nAligned sender and receiver statistics')
     print(stats.head(10))
     print(stats.tail(10))
+
+    # Align SRT stats and tshark datasets
+    # align_srt_tshark_stats(stats, SND_TSHARK_CSV)
 
 
 if __name__ == '__main__':
