@@ -3,6 +3,7 @@ from setuptools import setup, find_packages
 
 # Dependencies for using the library
 install_requires = [
+    'pathlib>=1.0.1',
     'pandas >=0.25.1',
     'tcpdump_processing @ git+https://github.com/mbakholdina/lib-tcpdump-processing.git@master#egg=tcpdump_processing',
 ]
