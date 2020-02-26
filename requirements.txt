@@ -1,5 +1,0 @@
-matplotlib
-pandas>=0.25.1
-pathlib>=1.0.1
-seaborn
-git+https://github.com/mbakholdina/lib-tcpdump-processing.git@master#egg=tcpdump_processing
