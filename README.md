@@ -18,6 +18,7 @@ venv/bin/python -m srt_stats_analysis.join_stats
 
 # ToDo
 
+1. Rename the library to lib-srt-stats.
 1. Align SRT and tshark datasets.
 1. Add remain features in align_srt_stats function.
 1. Script with plotting result dataframes.
