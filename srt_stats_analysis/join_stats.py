@@ -67,10 +67,15 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
 
     # Load SRT statistics from sender and receiver side to dataframes 
     # snd_stats and rcv_stats respectively and extract features of interest
-    snd_stats = pd.read_csv(snd_stats_path, index_col='Timepoint', parse_dates=True)
-    rcv_stats = pd.read_csv(rcv_stats_path, index_col='Timepoint', parse_dates=True)
+    snd_stats = pd.read_csv(snd_stats_path, index_col='Timepoint')
+    rcv_stats = pd.read_csv(rcv_stats_path, index_col='Timepoint')
     snd_stats = snd_stats[SND_FEATURES]
     rcv_stats = rcv_stats[RCV_FEATURES]
+
+    # Convert index to datetime64 specifying the timepoint format
+    form = '%d.%m.%Y %H:%M:%S.%f %z'
+    snd_stats.index = pd.to_datetime(snd_stats.index, format=form)
+    rcv_stats.index = pd.to_datetime(rcv_stats.index, format=form)
 
     # Convert timezones to UTC+0
     snd_stats.index = snd_stats.index.tz_convert(None)
@@ -150,23 +155,27 @@ def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
 
 
 # TODO: Under development
-def align_srt_tshark_stats(stats: pd.DataFrame, tshark_stats_path: str):
+def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     """
     Align SRT stats and tshark 
     """
-    # Extract SRT packets from .pcapng tshark dump file
-    srt_packets = extract_packets.extract_srt_packets(tshark_stats_path)
-    srt_packets.head(10)
+    print('\nMerging tshark data with SRT statistics')
 
-    print(srt_packets.empty)
+    # Extract SRT packets from .csv tshark dump file collected at the receiver side
+    srt_packets = extract_packets.extract_srt_packets(rcv_tshark_csv)
 
-    # Extract UMSG_ACK packets from SRT packets rcv_srt_packets which 
-    # contains receiving speed and bandwidth estimations reported by
-    # receiver each 10 ms:
+    print('\nSRT packets extracted from receiver tshark dump')
+    print(srt_packets.head(10))
+
+    # Extract UMSG_ACK packets from SRT packets srt_packets that
+    # contain receiving speed and bandwidth estimations reported by
+    # receiver each 10 ms
     umsg_ack_packets = extract_packets.extract_umsg_ack_packets(srt_packets)
-    umsg_ack_packets.head(10)
 
-    # From rcv_umsg_ack_packets dataframe, extract features valuable 
+    print('\nUMSG_ACK packets extracted from SRT packets')
+    print(umsg_ack_packets.head(10))
+
+    # From umsg_ack_packets dataframe, extract features valuable 
     # for further analysis, do some data cleaning and timezone correction
     TSHARK_FEATURES = ['ws.no', 'frame.time', 'srt.rate', 'srt.bw', 'srt.rcvrate']
     umsg_ack_packets = umsg_ack_packets[TSHARK_FEATURES]
@@ -176,7 +185,67 @@ def align_srt_tshark_stats(stats: pd.DataFrame, tshark_stats_path: str):
     umsg_ack_packets['srt.rate.Mbps'] = convert_bytesps_in_mbps(umsg_ack_packets['srt.rate.Bps'])
     umsg_ack_packets['srt.bw.Mbps'] = convert_bytesps_in_mbps(convert_pktsps_in_bytesps(umsg_ack_packets['srt.bw.pkts']))
     umsg_ack_packets = umsg_ack_packets[['ws.no', 'srt.rate.pkts', 'srt.rate.Mbps', 'srt.bw.pkts', 'srt.bw.Mbps']]
-    umsg_ack_packets.head()
+
+    print('\nAdjusted UMSG_ACK packets')
+    print(umsg_ack_packets.head(10))
+    print(umsg_ack_packets.tail(10))
+
+    # Combine stats dataframe (with SRT statistics) and adjusted 
+    # umsg_ack_packets dataframe. stats dataframe timepoints will be
+    # further used as a reference
+    start_timestamp = stats.index[0]
+    end_timestamp = stats.index[-1]
+    
+    stats['isStats'] = True
+    cols = ['srt.rate.Mbps', 'srt.bw.Mbps']
+    df = stats.join(umsg_ack_packets[cols].add_suffix('_tshark'), how='outer')
+    df['isStats'] = df['isStats'].fillna(False)
+
+    df = df[(df.index >= start_timestamp) & (df.index <= end_timestamp)]
+    assert(df['isStats'][0] == True)
+    assert(df['isStats'][-1] == True)
+
+    print('\nCombined SRT stats and tshark statistics')
+    print(df.head(10))
+    print(df.tail(10))
+
+    # Do interpolation
+    cols_to_interpolate = [f'{col}_tshark' for col in cols]
+    df.loc[:, cols_to_interpolate] = df.interpolate().fillna(method='bfill')
+    # stats.loc[:, cols_to_round] = stats.round()
+
+    print('\nInterpolated')
+    print(df.head(10))
+    print(df.tail(10))
+
+    df = df.loc[df['isStats'], df.columns != 'isStats']
+
+    print('\nOnly sender timepoints')
+    print(df.head(10))
+    print(df.tail(10))
+
+    # stats.loc[:, stats.columns != 'isSender']
+
+    # Rearrange the columns
+    cols_rearranged = [
+        'pktSent_snd',
+        'pktRecv_rcv',
+        'pktSndLoss_snd',
+        'pktRcvLoss_rcv',
+        'msRTT_snd',
+        'msRTT_rcv',
+        'mbpsBandwidth_snd',
+        'mbpsBandwidth_rcv',
+        'srt.bw.Mbps_tshark',
+        'srt.rate.Mbps_tshark'
+    ]
+    df = df[cols_rearranged]
+
+    print('\nFinal')
+    print(df.head(10))
+    print(df.tail(10))
+
+    # TODO: Round float values to 2 signs, convert relevant fields into int
 
 
 def main():
@@ -187,14 +256,13 @@ def main():
 
     SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
     RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
     RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
     # For the first time
     # RCV_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(RCV_TSHARK_PCAPNG), True)
-    # SND_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(SND_TSHARK_PCAPNG), True)
     # For the following time
-    # SND_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(SND_TSHARK_PCAPNG))
+    RCV_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(RCV_TSHARK_PCAPNG))
 
     # Align SRT statisitcs obtained from receiver and sender
     stats = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
@@ -204,7 +272,7 @@ def main():
     print(stats.tail(10))
 
     # Align SRT stats and tshark datasets
-    # align_srt_tshark_stats(stats, SND_TSHARK_CSV)
+    align_srt_tshark_stats(stats, RCV_TSHARK_CSV)
 
 
 if __name__ == '__main__':
