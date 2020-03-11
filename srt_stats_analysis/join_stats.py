@@ -7,7 +7,7 @@ import pathlib
 import pandas as pd
 
 from tcpdump_processing.convert import convert_to_csv
-from tcpdump_processing.extract_packets import extract_srt_packets, extract_umsg_ack_packets
+from tcpdump_processing.extract_packets import extract_srt_packets, extract_umsg_handshake_packets, extract_umsg_ack_packets
 
 
 # Without Ethernet packet overhead, bytes
@@ -292,22 +292,89 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     return df
 
 
+# TODO: Under development
+def check_time_difference(clr_tshark_csv: str, list_tshark_csv: str):
+    """ TODO """
+    # Extract SRT packets from .csv tshark dumps
+    clr_srt_packets = extract_srt_packets(clr_tshark_csv)
+    list_srt_packets = extract_srt_packets(list_tshark_csv)
+
+    # Extract UMSG_HANDSHAKE packets from SRT packets
+    clr_umsg_handshake = extract_umsg_handshake_packets(clr_srt_packets)
+    list_umsg_handshake = extract_umsg_handshake_packets(list_srt_packets)
+
+    print('\nUMSG_HANDSHAKE packets extracted from caller dump')
+    print(clr_umsg_handshake)
+
+    print('\nUMSG_HANDSHAKE packets extracted from listener dump')
+    print(list_umsg_handshake)
+
+    # Check whether there are 4 handshakes in tshark dumps
+    if len(clr_umsg_handshake) != 4:
+        raise Exception(
+            'There are less than 4 UMSG_HANDSHAKE packets in tshark dump '
+            'collected at the caller side'
+        )
+
+    if len(list_umsg_handshake) != 4:
+        raise Exception(
+            'There are less than 4 UMSG_HANDSHAKE packets in tshark dump '
+            'collected at the listener side'
+        )
+
+    # Calculate initial RTT
+    # Calculate initial RTT using caller data
+    clr_rtt_1 = clr_umsg_handshake.loc[1, 'frame.time'] - clr_umsg_handshake.loc[0, 'frame.time']
+    clr_rtt_2 = clr_umsg_handshake.loc[3, 'frame.time'] - clr_umsg_handshake.loc[2, 'frame.time']
+    clr_rtt = (clr_rtt_1 + clr_rtt_2) / 2
+    # Calculate initial RTT using listener data
+    list_rtt = list_umsg_handshake.loc[2, 'frame.time'] - list_umsg_handshake.loc[1, 'frame.time']
+    # Calculate result initial RTT
+    rtt = (clr_rtt + list_rtt) / 2
+
+    print(f'\nInitial RTT: {rtt}')
+
+    # Calculate potential difference in time between caller and listener clocks
+    # delta = clr_umsg_handshake.loc[0, 'frame.time'] - list_umsg_handshake.loc[0, 'frame.time'] + rtt / 2
+    delta = list_umsg_handshake.loc[0, 'frame.time'] - clr_umsg_handshake.loc[0, 'frame.time']
+
+    print(clr_umsg_handshake.loc[0, 'frame.time'])
+    print(list_umsg_handshake.loc[0, 'frame.time'])
+    print(type(list_umsg_handshake.loc[0, 'frame.time']))
+
+    print(f'Time difference: {delta}')
+
+    print(clr_umsg_handshake.info())
+
+
+
 def main():
-    # Set filepaths to the source files: sender and receiver SRT core .csv statistics, tshark .pcapng dumps collected on both sides
-    SND_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
-    RCV_STATS_PATH = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # Set filepaths to the source files: sender and receiver SRT core
+    # .csv statistics, tshark .pcapng dumps collected on both sides
+    SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
     RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
+    # TODO: Make it properly
     # For the first time
     # RCV_TSHARK_CSV = convert.convert_to_csv(pathlib.Path(RCV_TSHARK_PCAPNG), True)
     # For the following time
+    SND_TSHARK_CSV = convert_to_csv(pathlib.Path(SND_TSHARK_PCAPNG))
     RCV_TSHARK_CSV = convert_to_csv(pathlib.Path(RCV_TSHARK_PCAPNG))
 
-    # Align SRT statisitcs obtained from receiver and sender
-    stats = align_srt_stats(SND_STATS_PATH, RCV_STATS_PATH)
+    CLR_TSHARK_CSV = SND_TSHARK_CSV
+    LIST_TSHARK_CSV = RCV_TSHARK_CSV
 
-    print('\nAligned sender and receiver statistics')
+    # Check the difference in time
+    check_time_difference(CLR_TSHARK_CSV, LIST_TSHARK_CSV)
+
+    return
+
+    # Align SRT statisitcs obtained from the SRT receiver and sender
+    stats = align_srt_stats(SND_STATS_CSV, RCV_STATS_CSV)
+
+    print('\nAligned SRT sender and receiver statistics')
     print(stats.head(10))
     print(stats.tail(10))
 
