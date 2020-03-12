@@ -25,6 +25,20 @@ def convert_bytesps_in_mbps(value):
     return value * 8 / 1000000
 
 
+def convert_timedelta_to_milliseconds(delta):
+    """
+    Convert `pd.Timedelta` to milliseconds.
+
+    Attributes:
+        delta:
+            `pd.Timedelta` value.
+    """
+    millis = delta.days * 24 * 60 * 60 * 1000
+    millis += delta.seconds * 1000
+    millis += delta.microseconds / 1000
+    return millis
+
+
 def align_srt_stats(snd_stats_path: str, rcv_stats_path: str):
     """
     Align SRT core statistics obtained from receiver and sender.
@@ -292,9 +306,17 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     return df
 
 
-# TODO: Under development
-def check_time_difference(clr_tshark_csv: str, list_tshark_csv: str):
-    """ TODO """
+def check_clocks_difference(clr_tshark_csv: str, list_tshark_csv: str):
+    """
+    Calculate caller and listener clocks difference and check whether
+    it's less then the specified delta.
+
+    Attributes:
+        clr_tshark_csv:
+            Filepath to .csv tshark data collected at the caller side.
+        list_tshark_csv:
+            Filepath to .csv tshark data collected at the listener side.
+    """
     # Extract SRT packets from .csv tshark dumps
     clr_srt_packets = extract_srt_packets(clr_tshark_csv)
     list_srt_packets = extract_srt_packets(list_tshark_csv)
@@ -303,12 +325,13 @@ def check_time_difference(clr_tshark_csv: str, list_tshark_csv: str):
     clr_umsg_handshake = extract_umsg_handshake_packets(clr_srt_packets)
     list_umsg_handshake = extract_umsg_handshake_packets(list_srt_packets)
 
-    print('\nUMSG_HANDSHAKE packets extracted from caller dump')
+    print('\nUMSG_HANDSHAKE packets extracted from the caller dump')
     print(clr_umsg_handshake)
 
-    print('\nUMSG_HANDSHAKE packets extracted from listener dump')
+    print('\nUMSG_HANDSHAKE packets extracted from the listener dump')
     print(list_umsg_handshake)
 
+    # TODO: Make better validation of handshakes
     # Check whether there are 4 handshakes in tshark dumps
     if len(clr_umsg_handshake) != 4:
         raise Exception(
@@ -331,30 +354,49 @@ def check_time_difference(clr_tshark_csv: str, list_tshark_csv: str):
     list_rtt = list_umsg_handshake.loc[2, 'frame.time'] - list_umsg_handshake.loc[1, 'frame.time']
     # Calculate result initial RTT
     rtt = (clr_rtt + list_rtt) / 2
-
-    print(f'\nInitial RTT: {rtt}')
+    rtt = convert_timedelta_to_milliseconds(rtt)
 
     # Calculate potential difference in time between caller and listener clocks
     # delta = clr_umsg_handshake.loc[0, 'frame.time'] - list_umsg_handshake.loc[0, 'frame.time'] + rtt / 2
-    delta = list_umsg_handshake.loc[0, 'frame.time'] - clr_umsg_handshake.loc[0, 'frame.time']
+    clocks_diff = list_umsg_handshake.loc[0, 'frame.time'] - clr_umsg_handshake.loc[0, 'frame.time']
+    clocks_diff = convert_timedelta_to_milliseconds(clocks_diff)
+    clocks_diff = -(clocks_diff - rtt / 2)
 
-    print(clr_umsg_handshake.loc[0, 'frame.time'])
-    print(list_umsg_handshake.loc[0, 'frame.time'])
-    print(type(list_umsg_handshake.loc[0, 'frame.time']))
+    # TODO: Unit tests?
+    # tmp = pd.Timedelta('00:00:01.300')
+    # print(convert_timedelta_to_milliseconds(tmp))
+    # tmp2 = pd.Timedelta('01:01:01.300')
+    # print(convert_timedelta_to_milliseconds(tmp2))
+    # tmp3 = pd.Timedelta('1 days 00:00:00')
+    # print(convert_timedelta_to_milliseconds(tmp3))
 
-    print(f'Time difference: {delta}')
+    rtt = round(rtt, 2)
+    clocks_diff = round(clocks_diff, 2)
 
-    print(clr_umsg_handshake.info())
+    print(f'\nInitial RTT: {rtt} milliseconds')
+    print(f'\nTime difference in clocks: {clocks_diff} milliseconds')
 
+    # TODO: Delta on time difference
 
 
 def main():
     # Set filepaths to the source files: sender and receiver SRT core
     # .csv statistics, tshark .pcapng dumps collected on both sides
-    SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
-    RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
-    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
+    # SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    # RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
+
+    # TODO: 5 handshakes in this data
+    # SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    # RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
+
+    SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
     # TODO: Make it properly
     # For the first time
@@ -367,7 +409,8 @@ def main():
     LIST_TSHARK_CSV = RCV_TSHARK_CSV
 
     # Check the difference in time
-    check_time_difference(CLR_TSHARK_CSV, LIST_TSHARK_CSV)
+    print('Calculating caller and sender clocks difference')
+    check_clocks_difference(CLR_TSHARK_CSV, LIST_TSHARK_CSV)
 
     return
 
