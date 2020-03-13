@@ -24,7 +24,7 @@ The idea behind the calculation of clocks difference is the following
     * Calculate initial RTT from handshakes exchange and shift datasets by RTT_initial/2 under assumption that the experiment time is small enough to have no changes in RTT during transmission;
     * Extract RTT estimation from tshark data (UMSG_ACK packets) or use `msRTT` SRT statisitcs and shift receiver datasets accordingly. This requires additional research. Problems: a) Estimation accuracy; b) What will hapen in time moments where RTT changes dramatically?
 
-See `_data/notes_useast_eunorth_10.02.20_100Mbps.pdf` for the illustration.
+Check [these notes](../_data/notes_useast_eunorth_10.02.20_100Mbps.pdf) for the illustration.
 
 ### Aligning SRT statistics and tshark data
 
