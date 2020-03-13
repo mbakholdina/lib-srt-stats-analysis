@@ -1,5 +1,15 @@
 # Notes
 
+## Aligning the clocks between peers
+
+Before collecting the datasets, please make sure that all the peers use the same timebase, e.g., use NTP server to syncronize time between multiple machines.
+
+### Calculating the caller and sender clocks difference
+
+The idea behind the calculation of clocks difference is the following
+
+![Clocks difference](img/clocks_difference.png)
+
 ## Aligning datasets
 
 ### Aligning SRT sender and receiver statistics
