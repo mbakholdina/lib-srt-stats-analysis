@@ -409,12 +409,11 @@ def main():
     LIST_TSHARK_CSV = RCV_TSHARK_CSV
 
     # Check the difference in time
-    print('Calculating caller and sender clocks difference')
+    print('\nCalculating the caller and sender clocks difference')
     check_clocks_difference(CLR_TSHARK_CSV, LIST_TSHARK_CSV)
 
-    return
-
     # Align SRT statisitcs obtained from the SRT receiver and sender
+    print('\nAligning SRT statistics obtained from the SRT receiver and sender')
     stats = align_srt_stats(SND_STATS_CSV, RCV_STATS_CSV)
 
     print('\nAligned SRT sender and receiver statistics')
@@ -422,6 +421,7 @@ def main():
     print(stats.tail(10))
 
     # Align SRT stats and tshark data
+    print('\nAligning SRT statistics and tshark data')
     df = align_srt_tshark_stats(stats, RCV_TSHARK_CSV)
 
     print('\nAligned SRT statisitics and tshark data')
