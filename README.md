@@ -16,23 +16,26 @@ Please follow the [instructions](https://github.com/mbakholdina/lib-tcpdump-proc
 venv/bin/python -m srt_stats_analysis.join_stats
 ```
 
+# Documentation
+
+The notes on aligning the datasets can be found [here](docs/notes.md).
+
 # ToDo
 
-1. Rename the library to lib-srt-stats.
-1. Align SRT and tshark datasets.
-1. Add remain features in align_srt_stats function.
-1. Script with plotting result dataframes.
-2. SRT statistics documentation:
+* Rename the library to lib-srt-stats.
+* Add remain features in align_srt_stats function.
+* Script with plotting result dataframes.
+* SRT statistics documentation:
     - Note regarding the first data point (the time of connection),
     - Note regarding aggregated and not aggregated statistics,
     - Correct mbpsBandwidth description
     - Note regarding relative time and new absolute time.
-3. srt-live-transmit:
+* srt-live-transmit:
     - Ticket: Add absolute time points plus first data point when connection has been established
-4. Test caller-rcv and listener-sender use case.
-5. Extract initial RTT from handshakes and adjust receiver and sender clocks.
-6. Experiment with shifting receiver statistics by RTT/2 (as a start, we can shift by initial RTT calculated from handshakes).
-7. Extract RTT estimation from acknoledgement packets and experiment with shifting receiver statistics by RTT/2.
+* Test caller-rcv and listener-sender use case.
+* Extract initial RTT from handshakes and adjust receiver and sender clocks.
+* Experiment with shifting receiver statistics by RTT/2 (as a start, we can shift by initial RTT calculated from handshakes).
+* Extract RTT estimation from acknoledgement packets and experiment with shifting receiver statistics by RTT/2.
 
 Do not forget about issues found:
 - Missing ACKACK - write an issue on github.
