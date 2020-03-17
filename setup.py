@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 install_requires = [
     'pathlib>=1.0.1',
     'pandas>=0.25.1',
-    'streamlit>=0.56.0'
+    'streamlit>=0.56.0',
     'tcpdump_processing @ git+https://github.com/mbakholdina/lib-tcpdump-processing.git@master#egg=tcpdump_processing',
 ]
 
