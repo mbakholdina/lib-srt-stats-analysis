@@ -381,7 +381,7 @@ def check_clocks_difference(clr_tshark_csv: str, list_tshark_csv: str):
     # print(convert_timedelta_to_milliseconds(tmp3))
 
     rtt = round(rtt, 2)
-    clocks_diff = round(clocks_diff, 2)
+    clocks_diff = abs(round(clocks_diff, 2))
 
     print(f'\nInitial RTT: {rtt} milliseconds')
     print(f'\nTime difference in clocks: {clocks_diff} milliseconds')
