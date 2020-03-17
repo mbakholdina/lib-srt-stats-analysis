@@ -208,6 +208,8 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     TSHARK_FEATURES = [
         'ws.no',
         'frame.time',
+        'srt.rtt',
+        'srt.rttvar',
         'srt.rate',
         'srt.bw',
         'srt.rcvrate'
@@ -215,11 +217,15 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     umsg_ack_packets = umsg_ack_packets[TSHARK_FEATURES]
     umsg_ack_packets = umsg_ack_packets.set_index('frame.time')
     umsg_ack_packets.index = umsg_ack_packets.index.tz_convert(None)
+    umsg_ack_packets['srt.rtt'] = umsg_ack_packets['srt.rtt'] / 1000
+    umsg_ack_packets['srt.rttvar'] = umsg_ack_packets['srt.rttvar'] / 1000
     umsg_ack_packets = umsg_ack_packets.rename(
         columns={
-            "srt.rate": "srt.rate.pkts",
-            "srt.bw": "srt.bw.pkts",
-            "srt.rcvrate": "srt.rate.Bps"
+            'srt.rtt': 'srt.rtt.ms',
+            'srt.rttvar': 'srt.rttvar.ms',
+            'srt.rate': 'srt.rate.pkts',
+            'srt.bw': 'srt.bw.pkts',
+            'srt.rcvrate': 'srt.rate.Bps'
         }
     )
     umsg_ack_packets['srt.rate.Mbps'] = convert_bytesps_in_mbps(
@@ -231,6 +237,8 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     umsg_ack_packets = umsg_ack_packets[
         [
             'ws.no',
+            'srt.rtt.ms',
+            'srt.rttvar.ms',
             'srt.rate.pkts',
             'srt.rate.Mbps',
             'srt.bw.pkts',
@@ -249,7 +257,7 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
     end_timestamp = stats.index[-1]
     
     stats['isStats'] = True
-    cols = ['srt.rate.Mbps', 'srt.bw.Mbps']
+    cols = ['srt.rtt.ms', 'srt.rttvar.ms', 'srt.rate.Mbps', 'srt.bw.Mbps']
     df = stats.join(umsg_ack_packets[cols].add_suffix('_tshark'), how='outer')
     df['isStats'] = df['isStats'].fillna(False)
 
@@ -296,10 +304,12 @@ def align_srt_tshark_stats(stats: pd.DataFrame, rcv_tshark_csv: str):
         'pktRcvLoss_rcv',
         'msRTT_snd',
         'msRTT_rcv',
+        'srt.rtt.ms_tshark',
+        'srt.rttvar.ms_tshark',
         'mbpsBandwidth_snd',
         'mbpsBandwidth_rcv',
         'srt.bw.Mbps_tshark',
-        'srt.rate.Mbps_tshark'
+        # 'srt.rate.Mbps_tshark'
     ]
     df = df[cols_rearranged]
 
@@ -382,10 +392,10 @@ def check_clocks_difference(clr_tshark_csv: str, list_tshark_csv: str):
 def main():
     # Set filepaths to the source files: sender and receiver SRT core
     # .csv statistics, tshark .pcapng dumps collected on both sides
-    # SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
-    # RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
-    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
+    SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_100Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
     # TODO: 5 handshakes in this data
     # SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
@@ -393,10 +403,10 @@ def main():
     # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
     # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_300Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
-    SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
-    RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
-    SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
-    RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
+    # SND_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/4-srt-xtransmit-stats-snd.csv'
+    # RCV_STATS_CSV = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/3-srt-xtransmit-stats-rcv.csv'
+    # SND_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@23.96.93.54/1-tshark-tracefile-snd.pcapng'
+    # RCV_TSHARK_PCAPNG = '_data/_useast_eunorth_10.02.20_600Mbps/msharabayko@40.69.89.21/2-tshark-tracefile-rcv.pcapng'
 
     # TODO: Make it properly
     # For the first time
